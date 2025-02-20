@@ -1,0 +1,17 @@
+[
+    {
+      "number": 42,
+      "title": "Fix bug",
+      "state": "closed",
+      "created_at": "2025-02-10T12:34:56Z",
+      "closed_at": "2025-02-12T08:22:30Z"
+    },
+    {
+        "number": 43,
+        "title": "Fix bug 43",
+        "state": "closed",
+        "created_at": "2025-02-12T12:34:56Z",
+        "closed_at": "2025-02-13T08:22:30Z"
+      }
+  ]
+  

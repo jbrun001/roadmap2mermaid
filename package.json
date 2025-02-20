@@ -1,0 +1,12 @@
+{
+  "name": "roadmap2mermaid",
+  "version": "1.0.0",
+  "description": "convert github project roadmap to a mermaid.md gantt diagram with github actions - github actions learning",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
