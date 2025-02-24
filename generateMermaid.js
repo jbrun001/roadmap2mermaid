@@ -1,9 +1,9 @@
 // index.js
-// Use Node.js built-in fetch (Node 18+). Otherwise, uncomment the next line and install node-fetch:
+// requires Node.js built-in fetch (Node 18+). Otherwise, uncomment the next line and install node-fetch:
 // const fetch = require('node-fetch');
 const fs = require('fs');
 
-// Use your GitHub token from environment variables (set this in your GitHub Action secrets)
+// use GitHub token from environment variables or put token in place of 'secure' if running locally
 const organisation = 'jbrun001';
 const token = process.env.GITHUB_TOKEN || 'secure';
 
@@ -74,17 +74,17 @@ async function main() {
 
     const jsonResponse = await response.json();
 
-    // Write the full JSON response to "testissues.json"
+    // write the full JSON response to "testissues.json" for debugging
     fs.writeFileSync("testissues.json", JSON.stringify(jsonResponse, null, 2));
 
-    // Process each project and create a Mermaid Gantt chart file
+    // process each project and create a Mermaid Gantt chart file
     const projectsEdges = jsonResponse.data.user.projectsV2.edges;
     projectsEdges.forEach(projectEdge => {
       const projectTitle = projectEdge.node.title;
       // Remove spaces from the project title for the filename
       const projectFilename = projectTitle.replace(/\s+/g, "") + ".md";
 
-      // Build the Mermaid Gantt chart header wrapped in a Markdown code fence
+      // build the Mermaid Gantt chart header wrapped in a Markdown code indicator
       let chart = "```mermaid\ngantt\n    dateFormat  YYYY-MM-DD\n\n";
 
       projectEdge.node.items.edges.forEach(itemEdge => {
@@ -93,23 +93,23 @@ async function main() {
           const issue = item.content;
           const issueTitle = issue.title;
           const issueState = issue.state;
-          // Map issue state to Mermaid task status
+          // map issue state to Mermaid task status
           const status = (issueState === "CLOSED") ? "done" : "active";
 
           const fields = item.fieldValues.edges;
           if (fields.length >= 3) {
-            // The last three fields are: Kanban column, start date, end date
+            // the last three fields are: Kanban column, start date, end date
             // (kanbanColumn is available if needed)
             const kanbanColumn = fields[fields.length - 3].node.name;
             let startDate = fields[fields.length - 2].node.date;
             let endDate = fields[fields.length - 1].node.date;
 
-            // Substitute today's date if a date is missing
+            // substitute todays date if a date is missing
             const today = new Date().toISOString().split('T')[0];
             if (!startDate) startDate = today;
             if (!endDate) endDate = today;
 
-            // Append the issue as a task line in the Mermaid chart
+            // append the issue as a task line in the Mermaid chart
             chart += `    [${issueTitle}] : ${status}, ${startDate}, ${endDate}\n`;
           }
         }
@@ -118,7 +118,7 @@ async function main() {
       // Close the Mermaid code block
       chart += "```";
 
-      // Write the chart to a file named after the project (with spaces removed)
+      // write the chart to a file named after the project with spaces removed
       fs.writeFileSync(projectFilename, chart);
       console.log(`Mermaid Gantt chart for project '${projectTitle}' exported to ${projectFilename}`);
     });
