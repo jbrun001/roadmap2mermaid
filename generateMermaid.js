@@ -1,71 +1,130 @@
-const fs = require('fs').promises; // Using promises for async file operations
+// index.js
+// Use Node.js built-in fetch (Node 18+). Otherwise, uncomment the next line and install node-fetch:
+// const fetch = require('node-fetch');
+const fs = require('fs');
 
-// Helper to format a Date object into YYYY-MM-DD
-function formatDateObj(date) {
-  const year = date.getFullYear();
-  const month = (date.getMonth() + 1).toString().padStart(2, '0');
-  const day = date.getDate().toString().padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
+// Use your GitHub token from environment variables (set this in your GitHub Action secrets)
+const organisation = 'jbrun001';
+const token = process.env.GITHUB_TOKEN || 'secure';
 
-// Helper to format a date string into YYYY-MM-DD
-function formatDate(dateString) {
-  return formatDateObj(new Date(dateString));
-}
+const headers = {
+  "Authorization": `Bearer ${token}`,
+  "Content-Type": "application/json"
+};
 
-// Get today's date in YYYY-MM-DD format
-function getToday() {
-  return formatDateObj(new Date());
-}
-
-async function generateDiagram() {
-  try {
-    // Read the exported issues JSON file
-    const rawData = await fs.readFile('issues.json', 'utf-8');
-    const issues = JSON.parse(rawData);
-
-    // Ensure that issues is an array
-    if (!Array.isArray(issues)) {
-      throw new Error('issues.json must be an array of issue objects');
-    }
-
-    // Construct the Mermaid Gantt chart header
-    let mermaid = '```mermaid\ngantt\n';
-    mermaid += '    dateFormat  YYYY-MM-DD\n'
-    mermaid += '    excludes    sunday\n'
-    mermaid += '    title GitHub Project foodmanager Gantt Chart\n\n';
-
-    // Process each issue using roadmap dates if available
-    mermaid += '    section Roadmap Issues\n';
-    issues.forEach(issue => {
-      // Use roadmap fields if available; otherwise, fall back
-      const startDate = issue.roadmap_start_date
-        ? formatDate(issue.roadmap_start_date)
-        : formatDate(issue.created_at);
-
-      let endDate;
-      if (issue.roadmap_end_date) {
-        endDate = formatDate(issue.roadmap_end_date);
-      } else if (issue.state === 'closed' && issue.closed_at) {
-        endDate = formatDate(issue.closed_at);
-      } else {
-        endDate = getToday();
+const query = `
+query {
+  user(login: "${organisation}") {
+    projectsV2(first: 10) {
+      edges {
+        node {
+          title
+          items(first: 100) {
+            edges {
+              node {
+                id
+                content {
+                  ... on Issue {
+                    id
+                    title
+                    state
+                    assignees(first: 5) {
+                      nodes {
+                        login
+                      }
+                    }
+                  }
+                }
+                fieldValues(first: 10) {
+                  edges {
+                    node {
+                      __typename
+                      ... on ProjectV2ItemFieldDateValue {
+                        date
+                      }
+                      ... on ProjectV2ItemFieldSingleSelectValue {
+                        name
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
       }
+    }
+  }
+}`;
 
-      // Clean up the title to avoid syntax issues in Mermaid
-      const title = issue.title.replace(/"/g, "'");
-      mermaid += `    Issue #${issue.number} "${title}" : issue${issue.number}, ${startDate}, ${endDate}\n`;
+const body = JSON.stringify({ query });
+
+async function main() {
+  try {
+    const response = await fetch("https://api.github.com/graphql", {
+      method: "POST",
+      headers: headers,
+      body: body
     });
 
-    mermaid += '\n```';
+    if (!response.ok) {
+      console.error("GraphQL query failed:", response.statusText);
+      process.exit(1);
+    }
 
-    // Write the Mermaid diagram to a file (e.g., diagram.md)
-    await fs.writeFile('diagram.md', mermaid);
-    console.log('Mermaid diagram generated in diagram.md');
+    const jsonResponse = await response.json();
+
+    // Write the full JSON response to "testissues.json"
+    fs.writeFileSync("testissues.json", JSON.stringify(jsonResponse, null, 2));
+
+    // Process each project and create a Mermaid Gantt chart file
+    const projectsEdges = jsonResponse.data.user.projectsV2.edges;
+    projectsEdges.forEach(projectEdge => {
+      const projectTitle = projectEdge.node.title;
+      // Remove spaces from the project title for the filename
+      const projectFilename = projectTitle.replace(/\s+/g, "") + ".md";
+
+      // Build the Mermaid Gantt chart header wrapped in a Markdown code fence
+      let chart = "```mermaid\ngantt\n    dateFormat  YYYY-MM-DD\n\n";
+
+      projectEdge.node.items.edges.forEach(itemEdge => {
+        const item = itemEdge.node;
+        if (item.content) {
+          const issue = item.content;
+          const issueTitle = issue.title;
+          const issueState = issue.state;
+          // Map issue state to Mermaid task status
+          const status = (issueState === "CLOSED") ? "done" : "active";
+
+          const fields = item.fieldValues.edges;
+          if (fields.length >= 3) {
+            // The last three fields are: Kanban column, start date, end date
+            // (kanbanColumn is available if needed)
+            const kanbanColumn = fields[fields.length - 3].node.name;
+            let startDate = fields[fields.length - 2].node.date;
+            let endDate = fields[fields.length - 1].node.date;
+
+            // Substitute today's date if a date is missing
+            const today = new Date().toISOString().split('T')[0];
+            if (!startDate) startDate = today;
+            if (!endDate) endDate = today;
+
+            // Append the issue as a task line in the Mermaid chart
+            chart += `    [${issueTitle}] : ${status}, ${startDate}, ${endDate}\n`;
+          }
+        }
+      });
+
+      // Close the Mermaid code block
+      chart += "```";
+
+      // Write the chart to a file named after the project (with spaces removed)
+      fs.writeFileSync(projectFilename, chart);
+      console.log(`Mermaid Gantt chart for project '${projectTitle}' exported to ${projectFilename}`);
+    });
   } catch (error) {
-    console.error('Error generating Mermaid diagram:', error);
-    process.exit(1);
+    console.error("Error during GraphQL query:", error);
   }
 }
 
-generateDiagram();
+main();
